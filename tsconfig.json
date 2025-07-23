@@ -2,11 +2,19 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "jsx": "react-jsx",              // enable React 17+ JSX transform
+    "allowJs": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,            // skip type‑checking node_modules
+    "noEmit": true,
     "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
+      "@/*": ["./*"]
+    },
+    "types": [                       // explicitly include React type declarations
+      "react",
+      "react-native"
+    ]
   },
   "include": [
     "**/*.ts",
