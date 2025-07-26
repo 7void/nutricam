@@ -23,15 +23,14 @@ export default function UploadAndClassifyScreen() {
   const { mealId, auto } = useLocalSearchParams<{ mealId?: string; auto?: string }>()
   const { addMeal, updateMeal, meals } = useMeals()
 
-  // track if we've already auto-opened
   const autoOpened = useRef(false)
 
-  // --- Form state ---
+  //Form state
   const [mealName, setMealName] = useState('')
   const [mealTime, setMealTime] = useState('')
   const [foodItems, setFoodItems] = useState<FoodItem[]>([])
 
-  // --- Classification state ---
+  //Classification state
   const [modalVisible, setModalVisible] = useState(false)
   const [photoUri, setPhotoUri] = useState<string | null>(null)
   const [classifying, setClassifying] = useState(false)
@@ -40,10 +39,9 @@ export default function UploadAndClassifyScreen() {
   const [grams, setGrams] = useState(0)
   const [baseWeight, setBaseWeight] = useState(0)
 
-  // On focus: reset & only auto-open once
   useFocusEffect(
     useCallback(() => {
-      // reset base form
+      //reset 
       setMealName('')
       setFoodItems([])
       resetClassification()
@@ -53,7 +51,6 @@ export default function UploadAndClassifyScreen() {
         minute: '2-digit',
       }))
 
-      // auto-open only once
       if (auto === 'true' && !autoOpened.current) {
         autoOpened.current = true
         setModalVisible(true)
@@ -61,13 +58,19 @@ export default function UploadAndClassifyScreen() {
     }, [auto])
   )
 
-  // Permissions
   useEffect(() => {
     ;(async () => {
       await ImagePicker.requestCameraPermissionsAsync()
       await ImagePicker.requestMediaLibraryPermissionsAsync()
     })()
   }, [])
+
+  //auto classify
+  useEffect(() => {
+    if (photoUri) {
+      classify()
+    }
+  }, [photoUri])
 
   function resetClassification() {
     setResult(null)
@@ -118,7 +121,6 @@ export default function UploadAndClassifyScreen() {
       fat:      macros.fat      ?? 0,
     }
 
-    // editing an existing meal: append + exit
     if (mealId) {
       const existing = meals.find((m) => m.id === mealId)
       if (existing) updateMeal({ ...existing, items: [...existing.items, item] })
@@ -127,7 +129,7 @@ export default function UploadAndClassifyScreen() {
       return
     }
 
-    // new-meal flow: add locally + reset classification
+    //add locally and reset
     setFoodItems((f) => [...f, item])
     resetClassification()
   }
@@ -170,13 +172,18 @@ export default function UploadAndClassifyScreen() {
         />
         <Text style={styles.time}>{mealTime}</Text>
         {foodItems.map((itm, idx) => (
-          <Text key={idx} style={styles.item}>
-            • {itm.name} ({itm.grams}g)
-          </Text>
+          <View key={idx} style={styles.itemContainer}>
+            <Text style={styles.item}>
+              • {itm.name} ({itm.grams}g)
+            </Text>
+          </View>
         ))}
         <TouchableOpacity
           style={styles.addBtn}
-          onPress={() => setModalVisible(true)}
+          onPress={() => {
+            resetClassification()
+            setModalVisible(true)
+          }}
         >
           <Ionicons name="restaurant-outline" size={20} color="#000" />
           <Text style={styles.addBtnText}>Add Food Item</Text>
@@ -207,7 +214,10 @@ export default function UploadAndClassifyScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalCancel}
-                onPress={() => setModalVisible(false)}
+                onPress={() => {
+                  resetClassification()
+                  setModalVisible(false)
+                }}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -215,23 +225,24 @@ export default function UploadAndClassifyScreen() {
           ) : (
             <SafeAreaView style={styles.fullscreenModal}>
               <ScrollView contentContainerStyle={styles.fullContent}>
-                <Image source={{ uri: photoUri }} style={styles.preview} />
-                <TouchableOpacity
-                  style={styles.classifyBtn}
-                  onPress={classify}
-                  disabled={classifying}
-                >
-                  {classifying ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.classifyText}>Classify</Text>
-                  )}
-                </TouchableOpacity>
-                {result && macros && (
-                  <>
-                    <View style={styles.macrosCard}>
+                <View style={styles.imageContainer}>
+                  <Image source={{ uri: photoUri }} style={styles.preview} />
+                </View>
+                
+                {classifying && (
+                  <View style={styles.classifyingContainer}>
+                    <View style={styles.loadingCard}>
+                      <ActivityIndicator size="large" color="#000" />
+                      <Text style={styles.classifyingText}>Analyzing food...</Text>
+                    </View>
+                  </View>
+                )}
+                
+                {result && macros && !classifying && (
+                  <View style={styles.resultContainer}>
+                    <View style={styles.macrosSection}>
                       <Text style={styles.macroLabel}>
-                        {result.name} · {(result.value * 100).toFixed(0)}%
+                        {result.name}
                       </Text>
                       <Text style={styles.macro}>
                         Calories: {macros.calories ?? '–'} kcal
@@ -246,37 +257,41 @@ export default function UploadAndClassifyScreen() {
                         Fat: {macros.fat ?? '–'} g
                       </Text>
                     </View>
-                    <View style={styles.sliderRow}>
-                      <Text style={styles.gramText}>{grams} g</Text>
-                      <Slider
-                        style={styles.slider}
-                        minimumValue={1}
-                        maximumValue={baseWeight * 5}
-                        step={1}
-                        value={grams}
-                        onValueChange={setGrams}
-                        onSlidingComplete={async (val) => {
-                          setClassifying(true)
-                          try {
-                            const nutri = await fetchNutrition(
-                              `${val} g ${result.name}`
-                            )
-                            setMacros(nutri)
-                          } catch (e: any) {
-                            Alert.alert('Error', e.message)
-                          } finally {
-                            setClassifying(false)
-                          }
-                        }}
-                      />
+                    
+                    <View style={styles.sliderSection}>
+                      <View style={styles.sliderRow}>
+                        <Text style={styles.gramText}>{grams} g</Text>
+                        <Slider
+                          style={styles.slider}
+                          minimumValue={1}
+                          maximumValue={baseWeight * 5}
+                          step={1}
+                          value={grams}
+                          onValueChange={setGrams}
+                          onSlidingComplete={async (val) => {
+                            setClassifying(true)
+                            try {
+                              const nutri = await fetchNutrition(
+                                `${val} g ${result.name}`
+                              )
+                              setMacros(nutri)
+                            } catch (e: any) {
+                              Alert.alert('Error', e.message)
+                            } finally {
+                              setClassifying(false)
+                            }
+                          }}
+                        />
+                      </View>
                     </View>
+                    
                     <TouchableOpacity
                       style={styles.addToMealBtn}
                       onPress={addToMeal}
                     >
                       <Text style={styles.addToMealText}>Add to Meal</Text>
                     </TouchableOpacity>
-                  </>
+                  </View>
                 )}
               </ScrollView>
             </SafeAreaView>
@@ -293,12 +308,12 @@ const styles = StyleSheet.create({
     margin: 16,
     padding: 20,
     backgroundColor: '#fafafa',
-    borderRadius: 12,
+    borderRadius: 16,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 6,
     marginTop: 60,
   },
   input: {
@@ -310,26 +325,40 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   time: { fontSize: 16, color: '#666', marginBottom: 16 },
-  item: { fontSize: 16, color: '#333', marginVertical: 4 },
+  itemContainer: {
+    paddingVertical: 4,
+  },
+  item: { fontSize: 16, color: '#333' },
   addBtn: { flexDirection: 'row', alignItems: 'center',	marginTop: 16 },
   addBtnText: { marginLeft: 8, fontSize: 16, fontWeight: '600' },
   doneBtn: {
     marginTop: 24, backgroundColor: '#000', paddingVertical: 12,
-    borderRadius: 8, alignItems: 'center',
+    borderRadius: 12, alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 3,
   },
   doneText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 
   backdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'flex-end',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end',
   },
   bottomSheet: {
     backgroundColor: '#fff', padding: 20,
-    borderTopLeftRadius: 12, borderTopRightRadius: 12,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: -4 },
+    shadowRadius: 12,
+    elevation: 8,
   },
   modalTitle: {	fontSize: 18,	fontWeight: '600',	textAlign: 'center', marginBottom: 16 },
   modalBtn: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee',
+    paddingVertical: 16, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderBottomColor: '#eee',
   },
   modalBtnText: { marginLeft: 12, fontSize: 16 },
   modalCancel: { marginTop: 16, alignItems: 'center' },
@@ -337,34 +366,79 @@ const styles = StyleSheet.create({
 
   fullscreenModal: { flex: 1,	backgroundColor: '#fff' },
   fullContent: { alignItems: 'center',	padding: 16 },
+  imageContainer: {
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 4,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
   preview: {
     width: width - 64, height: width - 64,
-    borderRadius: 12, marginBottom: 16,
+    borderRadius: 16,
   },
-  classifyBtn: {
-    backgroundColor: '#000', padding: 12,
-    borderRadius: 8, alignItems: 'center',
-    marginBottom: 16, width: '60%',
+  
+  classifyingContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  classifyText: { color: '#fff', fontWeight: '600' },
+  loadingCard: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  classifyingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666',
+  },
 
-  macrosCard: {
-    width: '90%', backgroundColor: '#f5f5f5',
-    borderRadius: 8, padding: 12, marginBottom: 16,
+  resultContainer: {
+    width: '90%',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
   },
-  macroLabel: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
+  macrosSection: {
+    marginBottom: 16,
+  },
+  macroLabel: { fontSize: 18, fontWeight: '600', marginBottom: 8 },
   macro: { fontSize: 14, marginVertical: 2 },
 
+  sliderSection: {
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e8e8e8',
+    marginBottom: 16,
+  },
   sliderRow: {
     flexDirection: 'row',	alignItems: 'center',
-    width: '90%', marginBottom: 16,
   },
-  gramText: { fontSize: 16 },
+  gramText: { fontSize: 16, fontWeight: '500' },
   slider: { flex: 1, marginHorizontal: 12 },
 
   addToMealBtn: {
-    backgroundColor: '#000', padding: 12,
-    borderRadius: 8, alignItems: 'center', width: '60%',
+    backgroundColor: '#000', padding: 16,
+    borderRadius: 12, alignItems: 'center', width: '60%',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 3,
   },
-  addToMealText: { color: '#fff', fontWeight: '600' },
+  addToMealText: { color: '#fff', fontWeight: '600', fontSize: 16 },
 })
